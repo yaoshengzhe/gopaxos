@@ -1,2 +1,8 @@
 # gopaxos
-a paxos implementation based on Go
+A paxos implementation based on Go
+
+## Proposers
+
+## Acceptors
+
+## Learners
