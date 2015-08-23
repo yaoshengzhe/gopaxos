@@ -1,22 +1,32 @@
 package gopaxos
 
-import "testing"
-import "runtime"
-import "strconv"
-import "os"
-import "time"
-import "fmt"
-import "math/rand"
+import (
+	"bytes"
+	"fmt"
+	"math/rand"
+	"os"
+	"runtime"
+	"strconv"
+	"testing"
+	"time"
+)
 
 func port(tag string, host int) string {
-	s := "/var/tmp/824-"
-	s += strconv.Itoa(os.Getuid()) + "/"
-	os.Mkdir(s, 0777)
-	s += "px-"
-	s += strconv.Itoa(os.Getpid()) + "-"
-	s += tag + "-"
-	s += strconv.Itoa(host)
-	return s
+	var buf bytes.Buffer
+	buf.WriteString("/var/tmp/824-")
+	buf.WriteString(strconv.Itoa(os.Getuid()))
+	buf.WriteString("/")
+
+	os.Mkdir(buf.String(), 0777)
+
+	buf.WriteString("px-")
+	buf.WriteString(strconv.Itoa(os.Getpid()))
+	buf.WriteString("-")
+	buf.WriteString(tag)
+	buf.WriteString("-")
+	buf.WriteString(strconv.Itoa(host))
+
+	return buf.String()
 }
 
 func ndecided(t *testing.T, pxa []*Paxos, seq int) int {
@@ -27,8 +37,7 @@ func ndecided(t *testing.T, pxa []*Paxos, seq int) int {
 			decided, v1 := pxa[i].Status(seq)
 			if decided {
 				if count > 0 && v != v1 {
-					t.Fatalf("decided values do not match; seq=%v i=%v v=%v v1=%v",
-						seq, i, v, v1)
+					t.Fatalf("decided values do not match; seq=%v i=%v v=%v v1=%v", seq, i, v, v1)
 				}
 				count++
 				v = v1
