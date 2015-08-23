@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 func TestMain(m *testing.M) {
@@ -1027,18 +1029,40 @@ func port(tag string, host int) string {
 }
 
 func ndecided(pxa []*Paxos, seq int) (int, error) {
-	count := 0
-	var v interface{}
+	var states []struct {
+		decided bool
+		value   Value
+	}
+	if testing.Verbose() {
+		glog.Infof("Check states of instances, seq = %d", seq)
+	}
+
 	for i := 0; i < len(pxa); i++ {
-		if pxa[i] != nil {
-			decided, v1 := pxa[i].Status(seq)
+		decided, v := pxa[i].Status(seq)
+		states = append(states, struct {
+			decided bool
+			value   Value
+		}{decided, v})
+		if testing.Verbose() {
 			if decided {
-				if count > 0 && v != v1 {
-					return -1, fmt.Errorf("decided values do not match; seq=%v i=%v v=%v v1=%v", seq, i, v, v1)
-				}
-				count++
-				v = v1
+				glog.Infof("instance [%d] has decided a value: %v", pxa[i].ID(), v)
+			} else {
+				glog.Infof("instance [%d] has not decided a value", pxa[i].ID())
 			}
+		}
+	}
+
+	count := 0
+	var curDecidedValue Value
+
+	for i, status := range states {
+		if status.decided {
+			if count == 0 {
+				curDecidedValue = status.value
+			} else if curDecidedValue != status.value {
+				return -1, fmt.Errorf("decided values do not match; seq=%d i=%v v=%v v1=%v", seq, pxa[i].ID(), curDecidedValue, status.value)
+			}
+			count++
 		}
 	}
 	return count, nil

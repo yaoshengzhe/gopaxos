@@ -69,3 +69,7 @@ func (p *Paxos) Min() int {
 }
 
 func (p *Paxos) Kill() {}
+
+func (p *Paxos) ID() int {
+	return p.id
+}
