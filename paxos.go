@@ -32,23 +32,40 @@ package gopaxos
 //     reply accept_reject
 
 type Paxos struct {
-	id    int
-	peers []string
+	id         int
+	peers      []string
+	unreliable bool
+	rpcCount   int
 }
 
 type Value interface{}
+
+func Make(peers []string, me int) *Paxos {
+	return &Paxos{
+		id:    me,
+		peers: peers,
+	}
+}
 
 // Start starts an agreement on new instance.
 func (p *Paxos) Start(seq int, v Value) {}
 
 // // Status gets info about an instance.
-func (p *Paxos) Status(seq int) (bool, Value) {}
+func (p *Paxos) Status(seq int) (bool, Value) {
+	return false, nil
+}
 
 // Done means it is ok to forget all instances <= seq
 func (p *Paxos) Done(seq int) {}
 
 // Max returns the highest instance seq known, or -1.
-func (p *Paxos) Max() int {}
+func (p *Paxos) Max() int {
+	return 0
+}
 
 // instances before this have been forgotten
-func (p *Paxos) Min() int {}
+func (p *Paxos) Min() int {
+	return 0
+}
+
+func (p *Paxos) Kill() {}

@@ -29,7 +29,7 @@ func port(tag string, host int) string {
 	return buf.String()
 }
 
-func ndecided(t *testing.T, pxa []*Paxos, seq int) int {
+func ndecided(pxa []*Paxos, seq int) (int, error) {
 	count := 0
 	var v interface{}
 	for i := 0; i < len(pxa); i++ {
@@ -37,20 +37,24 @@ func ndecided(t *testing.T, pxa []*Paxos, seq int) int {
 			decided, v1 := pxa[i].Status(seq)
 			if decided {
 				if count > 0 && v != v1 {
-					t.Fatalf("decided values do not match; seq=%v i=%v v=%v v1=%v", seq, i, v, v1)
+					return -1, fmt.Errorf("decided values do not match; seq=%v i=%v v=%v v1=%v", seq, i, v, v1)
 				}
 				count++
 				v = v1
 			}
 		}
 	}
-	return count
+	return count, nil
 }
 
-func waitn(t *testing.T, pxa []*Paxos, seq int, wanted int) {
+func waitn(pxa []*Paxos, seq int, wanted int) error {
 	to := 10 * time.Millisecond
 	for iters := 0; iters < 30; iters++ {
-		if ndecided(t, pxa, seq) >= wanted {
+		count, err := ndecided(pxa, seq)
+		if err != nil {
+			return err
+		}
+		if count >= wanted {
 			break
 		}
 		time.Sleep(to)
@@ -58,22 +62,30 @@ func waitn(t *testing.T, pxa []*Paxos, seq int, wanted int) {
 			to *= 2
 		}
 	}
-	nd := ndecided(t, pxa, seq)
+	nd, err := ndecided(pxa, seq)
+	if err != nil {
+		return err
+	}
 	if nd < wanted {
-		t.Fatalf("too few decided; seq=%v ndecided=%v wanted=%v", seq, nd, wanted)
+		return fmt.Errorf("too few decided; seq=%v ndecided=%v wanted=%v", seq, nd, wanted)
 	}
+	return nil
 }
 
-func waitmajority(t *testing.T, pxa []*Paxos, seq int) {
-	waitn(t, pxa, seq, (len(pxa)/2)+1)
+func waitmajority(pxa []*Paxos, seq int) error {
+	return waitn(pxa, seq, (len(pxa)/2)+1)
 }
 
-func checkmax(t *testing.T, pxa []*Paxos, seq int, max int) {
+func checkmax(pxa []*Paxos, seq int, max int) error {
 	time.Sleep(3 * time.Second)
-	nd := ndecided(t, pxa, seq)
-	if nd > max {
-		t.Fatalf("too many decided; seq=%v ndecided=%v max=%v", seq, nd, max)
+	nd, err := ndecided(pxa, seq)
+	if err != nil {
+		return err
 	}
+	if nd > max {
+		return fmt.Errorf("too many decided; seq=%v ndecided=%v max=%v", seq, nd, max)
+	}
+	return nil
 }
 
 func cleanup(pxa []*Paxos) {
@@ -96,14 +108,16 @@ func noTestSpeed(t *testing.T) {
 		pxh[i] = port("time", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 
 	t0 := time.Now()
 
 	for i := 0; i < 20; i++ {
 		pxa[0].Start(i, "x")
-		waitn(t, pxa, i, npaxos)
+		if err := waitn(pxa, i, npaxos); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	d := time.Since(t0)
@@ -122,13 +136,15 @@ func TestBasic(t *testing.T) {
 		pxh[i] = port("basic", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 
 	fmt.Printf("Test: Single proposer ...\n")
 
 	pxa[0].Start(0, "hello")
-	waitn(t, pxa, 0, npaxos)
+	if err := waitn(pxa, 0, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 
@@ -137,7 +153,9 @@ func TestBasic(t *testing.T) {
 	for i := 0; i < npaxos; i++ {
 		pxa[i].Start(1, 77)
 	}
-	waitn(t, pxa, 1, npaxos)
+	if err := waitn(pxa, 1, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 
@@ -146,7 +164,9 @@ func TestBasic(t *testing.T) {
 	pxa[0].Start(2, 100)
 	pxa[1].Start(2, 101)
 	pxa[2].Start(2, 102)
-	waitn(t, pxa, 2, npaxos)
+	if err := waitn(pxa, 2, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 
@@ -155,13 +175,23 @@ func TestBasic(t *testing.T) {
 	pxa[0].Start(7, 700)
 	pxa[0].Start(6, 600)
 	pxa[1].Start(5, 500)
-	waitn(t, pxa, 7, npaxos)
+	if err := waitn(pxa, 7, npaxos); err != nil {
+		t.Fatal(err)
+	}
 	pxa[0].Start(4, 400)
 	pxa[1].Start(3, 300)
-	waitn(t, pxa, 6, npaxos)
-	waitn(t, pxa, 5, npaxos)
-	waitn(t, pxa, 4, npaxos)
-	waitn(t, pxa, 3, npaxos)
+	if err := waitn(pxa, 6, npaxos); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitn(pxa, 5, npaxos); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitn(pxa, 4, npaxos); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitn(pxa, 3, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	if pxa[0].Max() != 7 {
 		t.Fatalf("wrong Max()")
@@ -182,33 +212,50 @@ func TestDeaf(t *testing.T) {
 		pxh[i] = port("deaf", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 
 	fmt.Printf("Test: Deaf proposer ...\n")
 
 	pxa[0].Start(0, "hello")
-	waitn(t, pxa, 0, npaxos)
+	if err := waitn(pxa, 0, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	os.Remove(pxh[0])
 	os.Remove(pxh[npaxos-1])
 
 	pxa[1].Start(1, "goodbye")
-	waitmajority(t, pxa, 1)
+	if err := waitmajority(pxa, 1); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(1 * time.Second)
-	if ndecided(t, pxa, 1) != npaxos-2 {
-		t.Fatalf("a deaf peer heard about a decision")
+	count, err := ndecided(pxa, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != npaxos-2 {
+		t.Fatal("a deaf peer heard about a decision")
 	}
 
 	pxa[0].Start(1, "xxx")
-	waitn(t, pxa, 1, npaxos-1)
+	if err := waitn(pxa, 1, npaxos-1); err != nil {
+		t.Fatal(err)
+	}
+
 	time.Sleep(1 * time.Second)
-	if ndecided(t, pxa, 1) != npaxos-1 {
-		t.Fatalf("a deaf peer heard about a decision")
+	count, err = ndecided(pxa, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != npaxos-1 {
+		t.Fatal("a deaf peer heard about a decision")
 	}
 
 	pxa[npaxos-1].Start(1, "yyy")
-	waitn(t, pxa, 1, npaxos)
+	if err := waitn(pxa, 1, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 }
@@ -225,7 +272,7 @@ func TestForget(t *testing.T) {
 		pxh[i] = port("gc", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 
 	fmt.Printf("Test: Forgetting ...\n")
@@ -244,7 +291,9 @@ func TestForget(t *testing.T) {
 	pxa[0].Start(6, "66")
 	pxa[1].Start(7, "77")
 
-	waitn(t, pxa, 0, npaxos)
+	if err := waitn(pxa, 0, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	// Min() correct?
 	for i := 0; i < npaxos; i++ {
@@ -254,7 +303,9 @@ func TestForget(t *testing.T) {
 		}
 	}
 
-	waitn(t, pxa, 1, npaxos)
+	if err := waitn(pxa, 1, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	// Min() correct?
 	for i := 0; i < npaxos; i++ {
@@ -307,7 +358,7 @@ func TestManyForget(t *testing.T) {
 		pxh[i] = port("manygc", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 		pxa[i].unreliable = true
 	}
 
@@ -376,11 +427,13 @@ func TestForgetMem(t *testing.T) {
 		pxh[i] = port("gcmem", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 
 	pxa[0].Start(0, "x")
-	waitn(t, pxa, 0, npaxos)
+	if err := waitn(pxa, 0, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	runtime.GC()
 	var m0 runtime.MemStats
@@ -393,7 +446,9 @@ func TestForgetMem(t *testing.T) {
 			big[j] = byte('a' + rand.Int()%26)
 		}
 		pxa[0].Start(i, string(big))
-		waitn(t, pxa, i, npaxos)
+		if err := waitn(pxa, i, npaxos); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	runtime.GC()
@@ -440,14 +495,16 @@ func TestRPCCount(t *testing.T) {
 		pxh[i] = port("count", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 
 	ninst1 := 5
 	seq := 0
 	for i := 0; i < ninst1; i++ {
 		pxa[0].Start(seq, "x")
-		waitn(t, pxa, seq, npaxos)
+		if err := waitn(pxa, seq, npaxos); err != nil {
+			t.Fatal(err)
+		}
 		seq++
 	}
 
@@ -473,7 +530,10 @@ func TestRPCCount(t *testing.T) {
 		for j := 0; j < npaxos; j++ {
 			go pxa[j].Start(seq, j+(i*10))
 		}
-		waitn(t, pxa, seq, npaxos)
+		if err := waitn(pxa, seq, npaxos); err != nil {
+			t.Fatal(err)
+		}
+
 		seq++
 	}
 
@@ -515,16 +575,24 @@ func TestMany(t *testing.T) {
 		pxh[i] = port("many", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 		pxa[i].Start(0, 0)
 	}
 
 	const ninst = 50
 	for seq := 1; seq < ninst; seq++ {
-		// only 5 active instances, to limit the
-		// number of file descriptors.
-		for seq >= 5 && ndecided(t, pxa, seq-5) < npaxos {
-			time.Sleep(20 * time.Millisecond)
+		if seq >= 5 {
+			// only 5 active instances, to limit the
+			// number of file descriptors.
+			for {
+				count, err := ndecided(pxa, seq-5)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count < npaxos {
+					time.Sleep(20 * time.Millisecond)
+				}
+			}
 		}
 		for i := 0; i < npaxos; i++ {
 			pxa[i].Start(seq, (seq*10)+i)
@@ -534,7 +602,11 @@ func TestMany(t *testing.T) {
 	for {
 		done := true
 		for seq := 1; seq < ninst; seq++ {
-			if ndecided(t, pxa, seq) < npaxos {
+			count, err := ndecided(pxa, seq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count < npaxos {
 				done = false
 			}
 		}
@@ -565,21 +637,27 @@ func TestOld(t *testing.T) {
 		pxh[i] = port("old", i)
 	}
 
-	pxa[1] = Make(pxh, 1, nil)
-	pxa[2] = Make(pxh, 2, nil)
-	pxa[3] = Make(pxh, 3, nil)
+	pxa[1] = Make(pxh, 1)
+	pxa[2] = Make(pxh, 2)
+	pxa[3] = Make(pxh, 3)
 	pxa[1].Start(1, 111)
 
-	waitmajority(t, pxa, 1)
+	if err := waitmajority(pxa, 1); err != nil {
+		t.Fatal(err)
+	}
 
-	pxa[0] = Make(pxh, 0, nil)
+	pxa[0] = Make(pxh, 0)
 	pxa[0].Start(1, 222)
 
-	waitn(t, pxa, 1, 4)
+	if err := waitn(pxa, 1, 4); err != nil {
+		t.Fatal(err)
+	}
 
 	if false {
-		pxa[4] = Make(pxh, 4, nil)
-		waitn(t, pxa, 1, npaxos)
+		pxa[4] = Make(pxh, 4)
+		if err := waitn(pxa, 1, npaxos); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	fmt.Printf("  ... Passed\n")
@@ -602,7 +680,7 @@ func TestManyUnreliable(t *testing.T) {
 		pxh[i] = port("manyun", i)
 	}
 	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 		pxa[i].unreliable = true
 		pxa[i].Start(0, 0)
 	}
@@ -611,8 +689,16 @@ func TestManyUnreliable(t *testing.T) {
 	for seq := 1; seq < ninst; seq++ {
 		// only 3 active instances, to limit the
 		// number of file descriptors.
-		for seq >= 3 && ndecided(t, pxa, seq-3) < npaxos {
-			time.Sleep(20 * time.Millisecond)
+		if seq >= 3 {
+			for {
+				count, err := ndecided(pxa, seq-3)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count < npaxos {
+					time.Sleep(20 * time.Millisecond)
+				}
+			}
 		}
 		for i := 0; i < npaxos; i++ {
 			pxa[i].Start(seq, (seq*10)+i)
@@ -622,7 +708,11 @@ func TestManyUnreliable(t *testing.T) {
 	for {
 		done := true
 		for seq := 1; seq < ninst; seq++ {
-			if ndecided(t, pxa, seq) < npaxos {
+			count, err := ndecided(pxa, seq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count < npaxos {
 				done = false
 			}
 		}
@@ -694,7 +784,7 @@ func TestPartition(t *testing.T) {
 				pxh[j] = pp(tag, i, j)
 			}
 		}
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 	}
 	defer part(t, tag, npaxos, []int{}, []int{}, []int{})
 
@@ -704,7 +794,9 @@ func TestPartition(t *testing.T) {
 
 	part(t, tag, npaxos, []int{0, 2}, []int{1, 3}, []int{4})
 	pxa[1].Start(seq, 111)
-	checkmax(t, pxa, seq, 0)
+	if err := checkmax(pxa, seq, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 
@@ -712,7 +804,9 @@ func TestPartition(t *testing.T) {
 
 	part(t, tag, npaxos, []int{0}, []int{1, 2, 3}, []int{4})
 	time.Sleep(2 * time.Second)
-	waitmajority(t, pxa, seq)
+	if err := waitmajority(pxa, seq); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 
@@ -722,7 +816,9 @@ func TestPartition(t *testing.T) {
 	pxa[4].Start(seq, 1004)
 	part(t, tag, npaxos, []int{0, 1, 2, 3, 4}, []int{}, []int{})
 
-	waitn(t, pxa, seq, npaxos)
+	if err := waitn(pxa, seq, npaxos); err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Printf("  ... Passed\n")
 
@@ -734,13 +830,23 @@ func TestPartition(t *testing.T) {
 		part(t, tag, npaxos, []int{0, 1, 2}, []int{3, 4}, []int{})
 		pxa[0].Start(seq, seq*10)
 		pxa[3].Start(seq, (seq*10)+1)
-		waitmajority(t, pxa, seq)
-		if ndecided(t, pxa, seq) > 3 {
-			t.Fatalf("too many decided")
+		if err := waitmajority(pxa, seq); err != nil {
+			t.Fatal(err)
+		}
+
+		count, err := ndecided(pxa, seq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count > 3 {
+			t.Fatalf("ndecided(pxa, %d) = %d, want: 3", seq, count)
 		}
 
 		part(t, tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{})
-		waitn(t, pxa, seq, npaxos)
+		if err := waitn(pxa, seq, npaxos); err != nil {
+			t.Fatal(err)
+		}
+
 	}
 
 	fmt.Printf("  ... Passed\n")
@@ -758,9 +864,16 @@ func TestPartition(t *testing.T) {
 		for i := 0; i < npaxos; i++ {
 			pxa[i].Start(seq, (seq*10)+i)
 		}
-		waitn(t, pxa, seq, 3)
-		if ndecided(t, pxa, seq) > 3 {
-			t.Fatalf("too many decided")
+		if err := waitn(pxa, seq, 3); err != nil {
+			t.Fatal(err)
+		}
+
+		count, err := ndecided(pxa, seq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count > 3 {
+			t.Fatalf("ndecided(pxa, %d) = %d, want: 3", seq, count)
 		}
 
 		part(t, tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{})
@@ -769,7 +882,10 @@ func TestPartition(t *testing.T) {
 			pxa[i].unreliable = false
 		}
 
-		waitn(t, pxa, seq, 5)
+		if err := waitn(pxa, seq, 5); err != nil {
+			t.Fatal(err)
+		}
+
 	}
 
 	fmt.Printf("  ... Passed\n")
@@ -795,7 +911,7 @@ func TestLots(t *testing.T) {
 				pxh[j] = pp(tag, i, j)
 			}
 		}
-		pxa[i] = Make(pxh, i, nil)
+		pxa[i] = Make(pxh, i)
 		pxa[i].unreliable = true
 	}
 	defer part(t, tag, npaxos, []int{}, []int{}, []int{})
@@ -835,7 +951,11 @@ func TestLots(t *testing.T) {
 			// how many instances are in progress?
 			nd := 0
 			for i := 0; i < seq; i++ {
-				if ndecided(t, pxa, i) == npaxos {
+				count, err := ndecided(pxa, i)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count == npaxos {
 					nd++
 				}
 			}
@@ -855,7 +975,9 @@ func TestLots(t *testing.T) {
 		defer func() { ch3 <- true }()
 		for done == false {
 			for i := 0; i < seq; i++ {
-				ndecided(t, pxa, i)
+				if _, err := ndecided(pxa, i); err != nil {
+					t.Fatal(err)
+				}
 			}
 			time.Sleep(time.Duration(rand.Int63()%300) * time.Millisecond)
 		}
@@ -875,7 +997,9 @@ func TestLots(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	for i := 0; i < seq; i++ {
-		waitmajority(t, pxa, i)
+		if err := waitmajority(pxa, i); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	fmt.Printf("  ... Passed\n")
