@@ -11,144 +11,48 @@ import (
 	"time"
 )
 
-func port(tag string, host int) string {
-	var buf bytes.Buffer
-	buf.WriteString("/var/tmp/824-")
-	buf.WriteString(strconv.Itoa(os.Getuid()))
-	buf.WriteString("/")
-
-	os.Mkdir(buf.String(), 0777)
-
-	buf.WriteString("px-")
-	buf.WriteString(strconv.Itoa(os.Getpid()))
-	buf.WriteString("-")
-	buf.WriteString(tag)
-	buf.WriteString("-")
-	buf.WriteString(strconv.Itoa(host))
-
-	return buf.String()
-}
-
-func ndecided(pxa []*Paxos, seq int) (int, error) {
-	count := 0
-	var v interface{}
-	for i := 0; i < len(pxa); i++ {
-		if pxa[i] != nil {
-			decided, v1 := pxa[i].Status(seq)
-			if decided {
-				if count > 0 && v != v1 {
-					return -1, fmt.Errorf("decided values do not match; seq=%v i=%v v=%v v1=%v", seq, i, v, v1)
-				}
-				count++
-				v = v1
-			}
-		}
-	}
-	return count, nil
-}
-
-func waitn(pxa []*Paxos, seq int, wanted int) error {
-	to := 10 * time.Millisecond
-	for iters := 0; iters < 30; iters++ {
-		count, err := ndecided(pxa, seq)
-		if err != nil {
-			return err
-		}
-		if count >= wanted {
-			break
-		}
-		time.Sleep(to)
-		if to < time.Second {
-			to *= 2
-		}
-	}
-	nd, err := ndecided(pxa, seq)
-	if err != nil {
-		return err
-	}
-	if nd < wanted {
-		return fmt.Errorf("too few decided; seq=%v ndecided=%v wanted=%v", seq, nd, wanted)
-	}
-	return nil
-}
-
-func waitmajority(pxa []*Paxos, seq int) error {
-	return waitn(pxa, seq, (len(pxa)/2)+1)
-}
-
-func checkmax(pxa []*Paxos, seq int, max int) error {
-	time.Sleep(3 * time.Second)
-	nd, err := ndecided(pxa, seq)
-	if err != nil {
-		return err
-	}
-	if nd > max {
-		return fmt.Errorf("too many decided; seq=%v ndecided=%v max=%v", seq, nd, max)
-	}
-	return nil
-}
-
-func cleanup(pxa []*Paxos) {
-	for i := 0; i < len(pxa); i++ {
-		if pxa[i] != nil {
-			pxa[i].Kill()
-		}
-	}
-}
-
-func noTestSpeed(t *testing.T) {
+func TestMain(m *testing.M) {
 	runtime.GOMAXPROCS(4)
+	os.Exit(m.Run())
+}
 
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosSingleProposer(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("time", i)
+		pxh[i] = port("single-proposer", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 	}
 
-	t0 := time.Now()
-
-	for i := 0; i < 20; i++ {
-		pxa[0].Start(i, "x")
-		if err := waitn(pxa, i, npaxos); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	d := time.Since(t0)
-	fmt.Printf("20 agreements %v seconds\n", d.Seconds())
-}
-
-func TestBasic(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
-	defer cleanup(pxa)
-
-	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("basic", i)
-	}
-	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i)
-	}
-
-	fmt.Printf("Test: Single proposer ...\n")
+	fmt.Println("Test: Single proposer ...")
 
 	pxa[0].Start(0, "hello")
 	if err := waitn(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: Many proposers, same value ...\n")
+func TestGoPaxosManyProposersSameValue(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
+	defer cleanup(pxa)
+
+	for i := 0; i < npaxos; i++ {
+		pxh[i] = port("many-proposers-same-value", i)
+	}
+	for i := 0; i < npaxos; i++ {
+		pxa[i] = Make(pxh, i)
+	}
+
+	fmt.Println("Test: Many proposers, same value ...")
 
 	for i := 0; i < npaxos; i++ {
 		pxa[i].Start(1, 77)
@@ -157,29 +61,61 @@ func TestBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: Many proposers, different values ...\n")
+func TestGoPaxosManyProposersDifferentValues(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
+	defer cleanup(pxa)
+
+	for i := 0; i < npaxos; i++ {
+		pxh[i] = port("many-proposers-different-values", i)
+	}
+	for i := 0; i < npaxos; i++ {
+		pxa[i] = Make(pxh, i)
+	}
+
+	fmt.Println("Test: Many proposers, different values ...")
 
 	pxa[0].Start(2, 100)
 	pxa[1].Start(2, 101)
 	pxa[2].Start(2, 102)
+
 	if err := waitn(pxa, 2, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: Out-of-order instances ...\n")
+func TestGoPaxosOutOfOrderInstances(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
+	defer cleanup(pxa)
+
+	for i := 0; i < npaxos; i++ {
+		pxh[i] = port("out-of-order-instances", i)
+	}
+	for i := 0; i < npaxos; i++ {
+		pxa[i] = Make(pxh, i)
+	}
+
+	fmt.Println("Test: Out-of-order instances ...")
 
 	pxa[0].Start(7, 700)
 	pxa[0].Start(6, 600)
 	pxa[1].Start(5, 500)
+
 	if err := waitn(pxa, 7, npaxos); err != nil {
 		t.Fatal(err)
 	}
+
 	pxa[0].Start(4, 400)
 	pxa[1].Start(3, 300)
+
 	if err := waitn(pxa, 6, npaxos); err != nil {
 		t.Fatal(err)
 	}
@@ -194,37 +130,33 @@ func TestBasic(t *testing.T) {
 	}
 
 	if pxa[0].Max() != 7 {
-		t.Fatalf("wrong Max()")
+		t.Fatalf("pxa[0].Max() = %d, want: 7", pxa[0].Max())
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
-func TestDeaf(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	const npaxos = 5
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosDeafProposer(t *testing.T) {
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("deaf", i)
+		pxh[i] = port("deaf-proposer", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 	}
 
-	fmt.Printf("Test: Deaf proposer ...\n")
+	fmt.Println("Test: Deaf proposer ...")
 
 	pxa[0].Start(0, "hello")
 	if err := waitn(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
-
 	os.Remove(pxh[0])
 	os.Remove(pxh[npaxos-1])
-
 	pxa[1].Start(1, "goodbye")
 	if err := waitmajority(pxa, 1); err != nil {
 		t.Fatal(err)
@@ -257,25 +189,23 @@ func TestDeaf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
-func TestForget(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	const npaxos = 6
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosForgetting(t *testing.T) {
+	npaxos := 6
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("gc", i)
+		pxh[i] = port("forgetting", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 	}
 
-	fmt.Printf("Test: Forgetting ...\n")
+	fmt.Println("Test: Forgetting ...")
 
 	// initial Min() correct?
 	for i := 0; i < npaxos; i++ {
@@ -343,26 +273,24 @@ func TestForget(t *testing.T) {
 		t.Fatalf("Min() did not advance after Done()")
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
-func TestManyForget(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosLotsOfForgetting(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("manygc", i)
+		pxh[i] = port("lots-of-forgetting", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 		pxa[i].unreliable = true
 	}
 
-	fmt.Printf("Test: Lots of forgetting ...\n")
+	fmt.Println("Test: Lots of forgetting ...")
 
 	const maxseq = 20
 	done := false
@@ -407,28 +335,26 @@ func TestManyForget(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
 //
 // does paxos forgetting actually free the memory?
 //
-func TestForgetMem(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	fmt.Printf("Test: Paxos frees forgotten instance memory ...\n")
-
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosFreesForgottenInstanceMemory(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("gcmem", i)
+		pxh[i] = port("frees-forgotten-instance-memory", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 	}
+
+	fmt.Println("Test: Paxos frees forgotten instance memory ...")
 
 	pxa[0].Start(0, "x")
 	if err := waitn(pxa, 0, npaxos); err != nil {
@@ -465,7 +391,7 @@ func TestForgetMem(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	for i := 0; i < npaxos; i++ {
 		if pxa[i].Min() != 11 {
-			t.Fatalf("expected Min() %v, got %v\n", 11, pxa[i].Min())
+			t.Fatalf("expected Min() %v, got %v", 11, pxa[i].Min())
 		}
 	}
 
@@ -478,25 +404,23 @@ func TestForgetMem(t *testing.T) {
 		t.Fatalf("memory use did not shrink enough")
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
-func TestRPCCount(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	fmt.Printf("Test: RPC counts aren't too high ...\n")
-
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosRPCCountArentTooHigh(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("count", i)
+		pxh[i] = port("rpc-count-arent-too-high", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 	}
+
+	fmt.Println("Test: RPC counts aren't too high ...")
 
 	ninst1 := 5
 	seq := 0
@@ -555,29 +479,27 @@ func TestRPCCount(t *testing.T) {
 			ninst2, total2, expected2)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
 //
 // many agreements (without failures)
 //
-func TestMany(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	fmt.Printf("Test: Many instances ...\n")
-
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosManyInstances(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("many", i)
+		pxh[i] = port("many-instances", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 		pxa[i].Start(0, 0)
 	}
+
+	fmt.Println("Test: Many instances ...")
 
 	const ninst = 50
 	for seq := 1; seq < ninst; seq++ {
@@ -616,30 +538,29 @@ func TestMany(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
 //
 // a peer starts up, with proposal, after others decide.
 // then another peer starts, without a proposal.
 //
-func TestOld(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	fmt.Printf("Test: Minority proposal ignored ...\n")
-
-	const npaxos = 5
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosMinorityProposalIgnored(t *testing.T) {
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("old", i)
+		pxh[i] = port("minority-proposal-ignored", i)
 	}
 
 	pxa[1] = Make(pxh, 1)
 	pxa[2] = Make(pxh, 2)
 	pxa[3] = Make(pxh, 3)
+
+	fmt.Println("Test: Minority proposal ignored ...")
+
 	pxa[1].Start(1, 111)
 
 	if err := waitmajority(pxa, 1); err != nil {
@@ -660,30 +581,28 @@ func TestOld(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
 //
 // many agreements, with unreliable RPC
 //
-func TestManyUnreliable(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	fmt.Printf("Test: Many instances, unreliable RPC ...\n")
-
-	const npaxos = 3
-	var pxa []*Paxos = make([]*Paxos, npaxos)
-	var pxh []string = make([]string, npaxos)
+func TestGoPaxosManyInstancesUnreliableRPC(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
 	defer cleanup(pxa)
 
 	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("manyun", i)
+		pxh[i] = port("many-instances-unreliable-rpc", i)
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
 		pxa[i].unreliable = true
 		pxa[i].Start(0, 0)
 	}
+
+	fmt.Println("Test: Many instances, unreliable RPC ...")
 
 	const ninst = 50
 	for seq := 1; seq < ninst; seq++ {
@@ -722,112 +641,162 @@ func TestManyUnreliable(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
-func pp(tag string, src int, dst int) string {
-	s := "/var/tmp/824-"
-	s += strconv.Itoa(os.Getuid()) + "/"
-	s += "px-" + tag + "-"
-	s += strconv.Itoa(os.Getpid()) + "-"
-	s += strconv.Itoa(src) + "-"
-	s += strconv.Itoa(dst)
-	return s
-}
-
-func cleanpp(tag string, n int) {
-	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
-			ij := pp(tag, i, j)
-			os.Remove(ij)
-		}
-	}
-}
-
-func part(t *testing.T, tag string, npaxos int, p1 []int, p2 []int, p3 []int) {
-	cleanpp(tag, npaxos)
-
-	pa := [][]int{p1, p2, p3}
-	for pi := 0; pi < len(pa); pi++ {
-		p := pa[pi]
-		for i := 0; i < len(p); i++ {
-			for j := 0; j < len(p); j++ {
-				ij := pp(tag, p[i], p[j])
-				pj := port(tag, p[j])
-				err := os.Link(pj, ij)
-				if err != nil {
-					// one reason this link can fail is if the
-					// corresponding Paxos peer has prematurely quit and
-					// deleted its socket file (e.g., called px.Kill()).
-					t.Fatalf("os.Link(%v, %v): %v\n", pj, ij, err)
-				}
-			}
-		}
-	}
-}
-
-func TestPartition(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	tag := "partition"
-	const npaxos = 5
-	var pxa []*Paxos = make([]*Paxos, npaxos)
+func TestGoPaxosNoDecisionIfPartitioned(t *testing.T) {
+	tag := "no-decision-if-partitioned"
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
 	defer cleanup(pxa)
-	defer cleanpp(tag, npaxos)
+	defer cleanPartition(tag, npaxos)
 
 	for i := 0; i < npaxos; i++ {
-		var pxh []string = make([]string, npaxos)
+		pxh := make([]string, npaxos)
 		for j := 0; j < npaxos; j++ {
 			if j == i {
 				pxh[j] = port(tag, i)
 			} else {
-				pxh[j] = pp(tag, i, j)
+				pxh[j] = partitionedPort(tag, i, j)
 			}
 		}
 		pxa[i] = Make(pxh, i)
 	}
-	defer part(t, tag, npaxos, []int{}, []int{}, []int{})
+	defer func(t *testing.T, tag string, npaxos int) {
+		if err := makePartition(tag, npaxos, []int{}, []int{}, []int{}); err != nil {
+			t.Fatal(err)
+		}
+	}(t, tag, npaxos)
 
 	seq := 0
 
-	fmt.Printf("Test: No decision if partitioned ...\n")
+	fmt.Println("Test: No decision if partitioned ...")
 
-	part(t, tag, npaxos, []int{0, 2}, []int{1, 3}, []int{4})
+	if err := makePartition(tag, npaxos, []int{0, 2}, []int{1, 3}, []int{4}); err != nil {
+		t.Fatal(err)
+	}
 	pxa[1].Start(seq, 111)
 	if err := checkmax(pxa, seq, 0); err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: Decision in majority partition ...\n")
+func TestGoPaxosDecisionInMajorityPartition(t *testing.T) {
+	tag := "decision-in-majority-partition"
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
+	defer cleanup(pxa)
+	defer cleanPartition(tag, npaxos)
 
-	part(t, tag, npaxos, []int{0}, []int{1, 2, 3}, []int{4})
+	for i := 0; i < npaxos; i++ {
+		pxh := make([]string, npaxos)
+		for j := 0; j < npaxos; j++ {
+			if j == i {
+				pxh[j] = port(tag, i)
+			} else {
+				pxh[j] = partitionedPort(tag, i, j)
+			}
+		}
+		pxa[i] = Make(pxh, i)
+	}
+	defer func(t *testing.T, tag string, npaxos int) {
+		if err := makePartition(tag, npaxos, []int{}, []int{}, []int{}); err != nil {
+			t.Fatal(err)
+		}
+	}(t, tag, npaxos)
+
+	seq := 0
+
+	fmt.Println("Test: Decision in majority partition ...")
+
+	if err := makePartition(tag, npaxos, []int{0}, []int{1, 2, 3}, []int{4}); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(2 * time.Second)
 	if err := waitmajority(pxa, seq); err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: All agree after full heal ...\n")
+func TestGoPaxosAllAgreeAfterFullHeal(t *testing.T) {
+	tag := "all-agree-after-full-heal"
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
+	defer cleanup(pxa)
+	defer cleanPartition(tag, npaxos)
+
+	for i := 0; i < npaxos; i++ {
+		pxh := make([]string, npaxos)
+		for j := 0; j < npaxos; j++ {
+			if j == i {
+				pxh[j] = port(tag, i)
+			} else {
+				pxh[j] = partitionedPort(tag, i, j)
+			}
+		}
+		pxa[i] = Make(pxh, i)
+	}
+	defer func(t *testing.T, tag string, npaxos int) {
+		if err := makePartition(tag, npaxos, []int{}, []int{}, []int{}); err != nil {
+			t.Fatal(err)
+		}
+	}(t, tag, npaxos)
+
+	seq := 0
+
+	fmt.Println("Test: All agree after full heal ...")
 
 	pxa[0].Start(seq, 1000) // poke them
 	pxa[4].Start(seq, 1004)
-	part(t, tag, npaxos, []int{0, 1, 2, 3, 4}, []int{}, []int{})
+	if err := makePartition(tag, npaxos, []int{0, 1, 2, 3, 4}, []int{}, []int{}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := waitn(pxa, seq, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: One peer switches partitions ...\n")
+func TestGoPaxosOnePeerSwitchesPartitions(t *testing.T) {
+	tag := "one-peer-switches-partitions"
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
+	defer cleanup(pxa)
+	defer cleanPartition(tag, npaxos)
+
+	for i := 0; i < npaxos; i++ {
+		pxh := make([]string, npaxos)
+		for j := 0; j < npaxos; j++ {
+			if j == i {
+				pxh[j] = port(tag, i)
+			} else {
+				pxh[j] = partitionedPort(tag, i, j)
+			}
+		}
+		pxa[i] = Make(pxh, i)
+	}
+	defer func(t *testing.T, tag string, npaxos int) {
+		if err := makePartition(tag, npaxos, []int{}, []int{}, []int{}); err != nil {
+			t.Fatal(err)
+		}
+	}(t, tag, npaxos)
+
+	seq := 0
+
+	fmt.Println("Test: One peer switches partitions ...")
 
 	for iters := 0; iters < 20; iters++ {
 		seq++
 
-		part(t, tag, npaxos, []int{0, 1, 2}, []int{3, 4}, []int{})
+		if err := makePartition(tag, npaxos, []int{0, 1, 2}, []int{3, 4}, []int{}); err != nil {
+			t.Fatal(err)
+		}
 		pxa[0].Start(seq, seq*10)
 		pxa[3].Start(seq, (seq*10)+1)
 		if err := waitmajority(pxa, seq); err != nil {
@@ -842,16 +811,44 @@ func TestPartition(t *testing.T) {
 			t.Fatalf("ndecided(pxa, %d) = %d, want: 3", seq, count)
 		}
 
-		part(t, tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{})
+		if err := makePartition(tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{}); err != nil {
+			t.Fatal(err)
+		}
 		if err := waitn(pxa, seq, npaxos); err != nil {
 			t.Fatal(err)
 		}
-
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
 
-	fmt.Printf("Test: One peer switches partitions, unreliable ...\n")
+func TestGoPaxosOnePeerSwitchesPartitionsUnReliable(t *testing.T) {
+	tag := "one-peer-switches-partitions-unreliable"
+	npaxos := 5
+	pxa := make([]*Paxos, npaxos)
+	defer cleanup(pxa)
+	defer cleanPartition(tag, npaxos)
+
+	for i := 0; i < npaxos; i++ {
+		pxh := make([]string, npaxos)
+		for j := 0; j < npaxos; j++ {
+			if j == i {
+				pxh[j] = port(tag, i)
+			} else {
+				pxh[j] = partitionedPort(tag, i, j)
+			}
+		}
+		pxa[i] = Make(pxh, i)
+	}
+	defer func(t *testing.T, tag string, npaxos int) {
+		if err := makePartition(tag, npaxos, []int{}, []int{}, []int{}); err != nil {
+			t.Fatal(err)
+		}
+	}(t, tag, npaxos)
+
+	seq := 0
+
+	fmt.Println("Test: One peer switches partitions, unreliable ...")
 
 	for iters := 0; iters < 20; iters++ {
 		seq++
@@ -860,7 +857,9 @@ func TestPartition(t *testing.T) {
 			pxa[i].unreliable = true
 		}
 
-		part(t, tag, npaxos, []int{0, 1, 2}, []int{3, 4}, []int{})
+		if err := makePartition(tag, npaxos, []int{0, 1, 2}, []int{3, 4}, []int{}); err != nil {
+			t.Fatal(err)
+		}
 		for i := 0; i < npaxos; i++ {
 			pxa[i].Start(seq, (seq*10)+i)
 		}
@@ -876,7 +875,9 @@ func TestPartition(t *testing.T) {
 			t.Fatalf("ndecided(pxa, %d) = %d, want: 3", seq, count)
 		}
 
-		part(t, tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{})
+		if err := makePartition(tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{}); err != nil {
+			t.Fatal(err)
+		}
 
 		for i := 0; i < npaxos; i++ {
 			pxa[i].unreliable = false
@@ -888,33 +889,31 @@ func TestPartition(t *testing.T) {
 
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
 }
 
-func TestLots(t *testing.T) {
-	runtime.GOMAXPROCS(4)
-
-	fmt.Printf("Test: Many requests, changing partitions ...\n")
-
-	tag := "lots"
+func TestGoPaxosManyRequestsChangingPartitions(t *testing.T) {
+	tag := "many-request-changing-partitions"
 	const npaxos = 5
-	var pxa []*Paxos = make([]*Paxos, npaxos)
+	pxa := make([]*Paxos, npaxos)
 	defer cleanup(pxa)
-	defer cleanpp(tag, npaxos)
+	defer cleanPartition(tag, npaxos)
 
 	for i := 0; i < npaxos; i++ {
-		var pxh []string = make([]string, npaxos)
+		pxh := make([]string, npaxos)
 		for j := 0; j < npaxos; j++ {
 			if j == i {
 				pxh[j] = port(tag, i)
 			} else {
-				pxh[j] = pp(tag, i, j)
+				pxh[j] = partitionedPort(tag, i, j)
 			}
 		}
 		pxa[i] = Make(pxh, i)
 		pxa[i].unreliable = true
 	}
-	defer part(t, tag, npaxos, []int{}, []int{}, []int{})
+	defer makePartition(tag, npaxos, []int{}, []int{}, []int{})
+
+	fmt.Println("Test: Many requests, changing partitions ...")
 
 	done := false
 
@@ -936,7 +935,9 @@ func TestLots(t *testing.T) {
 					}
 				}
 			}
-			part(t, tag, npaxos, pa[0], pa[1], pa[2])
+			if err := makePartition(tag, npaxos, pa[0], pa[1], pa[2]); err != nil {
+				t.Fatal(err)
+			}
 			time.Sleep(time.Duration(rand.Int63()%200) * time.Millisecond)
 		}
 	}()
@@ -993,7 +994,9 @@ func TestLots(t *testing.T) {
 	for i := 0; i < npaxos; i++ {
 		pxa[i].unreliable = false
 	}
-	part(t, tag, npaxos, []int{0, 1, 2, 3, 4}, []int{}, []int{})
+	if err := makePartition(tag, npaxos, []int{0, 1, 2, 3, 4}, []int{}, []int{}); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(5 * time.Second)
 
 	for i := 0; i < seq; i++ {
@@ -1002,5 +1005,162 @@ func TestLots(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Println("  ... Passed")
+}
+
+func port(tag string, host int) string {
+	var buf bytes.Buffer
+	buf.WriteString("/var/tmp/gopaxos-")
+	buf.WriteString(strconv.Itoa(os.Getuid()))
+	buf.WriteString("/")
+
+	os.Mkdir(buf.String(), 0777)
+
+	buf.WriteString("px-")
+	buf.WriteString(strconv.Itoa(os.Getpid()))
+	buf.WriteString("-")
+	buf.WriteString(tag)
+	buf.WriteString("-")
+	buf.WriteString(strconv.Itoa(host))
+
+	return buf.String()
+}
+
+func ndecided(pxa []*Paxos, seq int) (int, error) {
+	count := 0
+	var v interface{}
+	for i := 0; i < len(pxa); i++ {
+		if pxa[i] != nil {
+			decided, v1 := pxa[i].Status(seq)
+			if decided {
+				if count > 0 && v != v1 {
+					return -1, fmt.Errorf("decided values do not match; seq=%v i=%v v=%v v1=%v", seq, i, v, v1)
+				}
+				count++
+				v = v1
+			}
+		}
+	}
+	return count, nil
+}
+
+func waitn(pxa []*Paxos, seq int, wanted int) error {
+	to := 10 * time.Millisecond
+	for iters := 0; iters < 30; iters++ {
+		count, err := ndecided(pxa, seq)
+		if err != nil {
+			return err
+		}
+		if count >= wanted {
+			break
+		}
+		time.Sleep(to)
+		if to < time.Second {
+			// to *= 2
+		}
+	}
+	nd, err := ndecided(pxa, seq)
+	if err != nil {
+		return err
+	}
+	if nd < wanted {
+		return fmt.Errorf("too few decided; seq=%v ndecided=%v wanted=%v", seq, nd, wanted)
+	}
+	return nil
+}
+
+func waitmajority(pxa []*Paxos, seq int) error {
+	return waitn(pxa, seq, (len(pxa)/2)+1)
+}
+
+func checkmax(pxa []*Paxos, seq int, max int) error {
+	time.Sleep(3 * time.Second)
+	nd, err := ndecided(pxa, seq)
+	if err != nil {
+		return err
+	}
+	if nd > max {
+		return fmt.Errorf("too many decided; seq=%v ndecided=%v max=%v", seq, nd, max)
+	}
+	return nil
+}
+
+func cleanup(pxa []*Paxos) {
+	for i := 0; i < len(pxa); i++ {
+		if pxa[i] != nil {
+			pxa[i].Kill()
+		}
+	}
+}
+
+func TestGoPaxosConvergenceSpeed(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
+	defer cleanup(pxa)
+
+	for i := 0; i < npaxos; i++ {
+		pxh[i] = port("convergence-speed", i)
+	}
+	for i := 0; i < npaxos; i++ {
+		pxa[i] = Make(pxh, i)
+	}
+
+	t0 := time.Now()
+
+	for i := 0; i < 20; i++ {
+		pxa[0].Start(i, "x")
+		if err := waitn(pxa, i, npaxos); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d := time.Since(t0)
+	fmt.Println("20 agreements %v seconds", d.Seconds())
+}
+
+func partitionedPort(tag string, src int, dest int) string {
+	var buf bytes.Buffer
+	buf.WriteString("/var/tmp/gopaxos-")
+	buf.WriteString(strconv.Itoa(os.Getuid()))
+	buf.WriteString("/px-")
+	buf.WriteString(tag)
+	buf.WriteString("-")
+	buf.WriteString(strconv.Itoa(os.Getpid()))
+	buf.WriteString("-")
+	buf.WriteString(strconv.Itoa(src))
+	buf.WriteString("-")
+	buf.WriteString(strconv.Itoa(dest))
+	return buf.String()
+}
+
+func cleanPartition(tag string, n int) {
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			ij := partitionedPort(tag, i, j)
+			os.Remove(ij)
+		}
+	}
+}
+
+func makePartition(tag string, npaxos int, p1 []int, p2 []int, p3 []int) error {
+	cleanPartition(tag, npaxos)
+	pa := [][]int{p1, p2, p3}
+	for pi := 0; pi < len(pa); pi++ {
+		p := pa[pi]
+		for i := 0; i < len(p); i++ {
+			for j := 0; j < len(p); j++ {
+				ij := partitionedPort(tag, p[i], p[j])
+				pj := port(tag, p[j])
+				err := os.Link(pj, ij)
+				if err != nil {
+					// one reason this link can fail is if the
+					// corresponding Paxos peer has prematurely quit and
+					// deleted its socket file (e.g., called px.Kill()).
+					return fmt.Errorf("os.Link(%v, %v): %v", pj, ij, err)
+				}
+			}
+		}
+	}
+	return nil
 }
