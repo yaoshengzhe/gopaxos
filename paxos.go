@@ -1,6 +1,8 @@
 // Package gopaxos implements a simple paxos algorithm for learning purpose.
 package gopaxos
 
+import "sync"
+
 // proposer(v):
 //   while not decided:
 //     choose n, unique and higher than any n seen so far
@@ -32,18 +34,20 @@ package gopaxos
 //     reply accept_reject
 
 type Paxos struct {
-	id         int
-	peers      []string
-	unreliable bool
-	rpcCount   int
+	id            int
+	peers         []string
+	unreliableRPC bool
+	rpcCount      int
+	mu            sync.Mutex
 }
 
 type Value interface{}
 
 func Make(peers []string, me int) *Paxos {
 	return &Paxos{
-		id:    me,
-		peers: peers,
+		id:            me,
+		peers:         peers,
+		unreliableRPC: false,
 	}
 }
 
@@ -72,4 +76,16 @@ func (p *Paxos) Kill() {}
 
 func (p *Paxos) ID() int {
 	return p.id
+}
+
+func (p *Paxos) EnableUnReliableRPC() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.unreliableRPC = true
+}
+
+func (p *Paxos) EnableReliableRPC() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.unreliableRPC = false
 }

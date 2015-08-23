@@ -34,7 +34,7 @@ func TestGoPaxosSingleProposer(t *testing.T) {
 	fmt.Println("Test: Single proposer ...")
 
 	pxa[0].Start(0, "hello")
-	if err := waitn(pxa, 0, npaxos); err != nil {
+	if err := waitN(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,7 +59,7 @@ func TestGoPaxosManyProposersSameValue(t *testing.T) {
 	for i := 0; i < npaxos; i++ {
 		pxa[i].Start(1, 77)
 	}
-	if err := waitn(pxa, 1, npaxos); err != nil {
+	if err := waitN(pxa, 1, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,7 +85,7 @@ func TestGoPaxosManyProposersDifferentValues(t *testing.T) {
 	pxa[1].Start(2, 101)
 	pxa[2].Start(2, 102)
 
-	if err := waitn(pxa, 2, npaxos); err != nil {
+	if err := waitN(pxa, 2, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,23 +111,23 @@ func TestGoPaxosOutOfOrderInstances(t *testing.T) {
 	pxa[0].Start(6, 600)
 	pxa[1].Start(5, 500)
 
-	if err := waitn(pxa, 7, npaxos); err != nil {
+	if err := waitN(pxa, 7, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
 	pxa[0].Start(4, 400)
 	pxa[1].Start(3, 300)
 
-	if err := waitn(pxa, 6, npaxos); err != nil {
+	if err := waitN(pxa, 6, npaxos); err != nil {
 		t.Fatal(err)
 	}
-	if err := waitn(pxa, 5, npaxos); err != nil {
+	if err := waitN(pxa, 5, npaxos); err != nil {
 		t.Fatal(err)
 	}
-	if err := waitn(pxa, 4, npaxos); err != nil {
+	if err := waitN(pxa, 4, npaxos); err != nil {
 		t.Fatal(err)
 	}
-	if err := waitn(pxa, 3, npaxos); err != nil {
+	if err := waitN(pxa, 3, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,13 +154,13 @@ func TestGoPaxosDeafProposer(t *testing.T) {
 	fmt.Println("Test: Deaf proposer ...")
 
 	pxa[0].Start(0, "hello")
-	if err := waitn(pxa, 0, npaxos); err != nil {
+	if err := waitN(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
 	os.Remove(pxh[0])
 	os.Remove(pxh[npaxos-1])
 	pxa[1].Start(1, "goodbye")
-	if err := waitmajority(pxa, 1); err != nil {
+	if err := waitMajority(pxa, 1); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(1 * time.Second)
@@ -173,7 +173,7 @@ func TestGoPaxosDeafProposer(t *testing.T) {
 	}
 
 	pxa[0].Start(1, "xxx")
-	if err := waitn(pxa, 1, npaxos-1); err != nil {
+	if err := waitN(pxa, 1, npaxos-1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -187,7 +187,7 @@ func TestGoPaxosDeafProposer(t *testing.T) {
 	}
 
 	pxa[npaxos-1].Start(1, "yyy")
-	if err := waitn(pxa, 1, npaxos); err != nil {
+	if err := waitN(pxa, 1, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,7 +223,7 @@ func TestGoPaxosForgetting(t *testing.T) {
 	pxa[0].Start(6, "66")
 	pxa[1].Start(7, "77")
 
-	if err := waitn(pxa, 0, npaxos); err != nil {
+	if err := waitN(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -235,7 +235,7 @@ func TestGoPaxosForgetting(t *testing.T) {
 		}
 	}
 
-	if err := waitn(pxa, 1, npaxos); err != nil {
+	if err := waitN(pxa, 1, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -289,7 +289,7 @@ func TestGoPaxosLotsOfForgetting(t *testing.T) {
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
-		pxa[i].unreliable = true
+		pxa[i].EnableUnReliableRPC()
 	}
 
 	fmt.Println("Test: Lots of forgetting ...")
@@ -325,7 +325,7 @@ func TestGoPaxosLotsOfForgetting(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	done = true
 	for i := 0; i < npaxos; i++ {
-		pxa[i].unreliable = false
+		pxa[i].EnableReliableRPC()
 	}
 	time.Sleep(2 * time.Second)
 
@@ -359,7 +359,7 @@ func TestGoPaxosFreesForgottenInstanceMemory(t *testing.T) {
 	fmt.Println("Test: Paxos frees forgotten instance memory ...")
 
 	pxa[0].Start(0, "x")
-	if err := waitn(pxa, 0, npaxos); err != nil {
+	if err := waitN(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -374,7 +374,7 @@ func TestGoPaxosFreesForgottenInstanceMemory(t *testing.T) {
 			big[j] = byte('a' + rand.Int()%26)
 		}
 		pxa[0].Start(i, string(big))
-		if err := waitn(pxa, i, npaxos); err != nil {
+		if err := waitN(pxa, i, npaxos); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -428,7 +428,7 @@ func TestGoPaxosRPCCountArentTooHigh(t *testing.T) {
 	seq := 0
 	for i := 0; i < ninst1; i++ {
 		pxa[0].Start(seq, "x")
-		if err := waitn(pxa, seq, npaxos); err != nil {
+		if err := waitN(pxa, seq, npaxos); err != nil {
 			t.Fatal(err)
 		}
 		seq++
@@ -456,7 +456,7 @@ func TestGoPaxosRPCCountArentTooHigh(t *testing.T) {
 		for j := 0; j < npaxos; j++ {
 			go pxa[j].Start(seq, j+(i*10))
 		}
-		if err := waitn(pxa, seq, npaxos); err != nil {
+		if err := waitN(pxa, seq, npaxos); err != nil {
 			t.Fatal(err)
 		}
 
@@ -565,20 +565,20 @@ func TestGoPaxosMinorityProposalIgnored(t *testing.T) {
 
 	pxa[1].Start(1, 111)
 
-	if err := waitmajority(pxa, 1); err != nil {
+	if err := waitMajority(pxa, 1); err != nil {
 		t.Fatal(err)
 	}
 
 	pxa[0] = Make(pxh, 0)
 	pxa[0].Start(1, 222)
 
-	if err := waitn(pxa, 1, 4); err != nil {
+	if err := waitN(pxa, 1, 4); err != nil {
 		t.Fatal(err)
 	}
 
 	if false {
 		pxa[4] = Make(pxh, 4)
-		if err := waitn(pxa, 1, npaxos); err != nil {
+		if err := waitN(pxa, 1, npaxos); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -600,7 +600,7 @@ func TestGoPaxosManyInstancesUnreliableRPC(t *testing.T) {
 	}
 	for i := 0; i < npaxos; i++ {
 		pxa[i] = Make(pxh, i)
-		pxa[i].unreliable = true
+		pxa[i].EnableUnReliableRPC()
 		pxa[i].Start(0, 0)
 	}
 
@@ -678,8 +678,17 @@ func TestGoPaxosNoDecisionIfPartitioned(t *testing.T) {
 		t.Fatal(err)
 	}
 	pxa[1].Start(seq, 111)
-	if err := checkmax(pxa, seq, 0); err != nil {
+
+	maxNumOfDecided := 0
+	count, err := waitInstances(pxa, seq, func(count int) bool {
+		time.Sleep(3 * time.Second)
+		return true
+	})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if count > maxNumOfDecided {
+		t.Fatalf("too many decided; seq=%v ndecided=%v max decided #instances=%v", seq, count, maxNumOfDecided)
 	}
 
 	fmt.Println("  ... Passed")
@@ -717,7 +726,7 @@ func TestGoPaxosDecisionInMajorityPartition(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(2 * time.Second)
-	if err := waitmajority(pxa, seq); err != nil {
+	if err := waitMajority(pxa, seq); err != nil {
 		t.Fatal(err)
 	}
 
@@ -758,7 +767,7 @@ func TestGoPaxosAllAgreeAfterFullHeal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := waitn(pxa, seq, npaxos); err != nil {
+	if err := waitN(pxa, seq, npaxos); err != nil {
 		t.Fatal(err)
 	}
 
@@ -801,7 +810,7 @@ func TestGoPaxosOnePeerSwitchesPartitions(t *testing.T) {
 		}
 		pxa[0].Start(seq, seq*10)
 		pxa[3].Start(seq, (seq*10)+1)
-		if err := waitmajority(pxa, seq); err != nil {
+		if err := waitMajority(pxa, seq); err != nil {
 			t.Fatal(err)
 		}
 
@@ -816,7 +825,7 @@ func TestGoPaxosOnePeerSwitchesPartitions(t *testing.T) {
 		if err := makePartition(tag, npaxos, []int{0, 1}, []int{2, 3, 4}, []int{}); err != nil {
 			t.Fatal(err)
 		}
-		if err := waitn(pxa, seq, npaxos); err != nil {
+		if err := waitN(pxa, seq, npaxos); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -856,7 +865,7 @@ func TestGoPaxosOnePeerSwitchesPartitionsUnReliable(t *testing.T) {
 		seq++
 
 		for i := 0; i < npaxos; i++ {
-			pxa[i].unreliable = true
+			pxa[i].EnableUnReliableRPC()
 		}
 
 		if err := makePartition(tag, npaxos, []int{0, 1, 2}, []int{3, 4}, []int{}); err != nil {
@@ -865,7 +874,7 @@ func TestGoPaxosOnePeerSwitchesPartitionsUnReliable(t *testing.T) {
 		for i := 0; i < npaxos; i++ {
 			pxa[i].Start(seq, (seq*10)+i)
 		}
-		if err := waitn(pxa, seq, 3); err != nil {
+		if err := waitN(pxa, seq, 3); err != nil {
 			t.Fatal(err)
 		}
 
@@ -882,10 +891,10 @@ func TestGoPaxosOnePeerSwitchesPartitionsUnReliable(t *testing.T) {
 		}
 
 		for i := 0; i < npaxos; i++ {
-			pxa[i].unreliable = false
+			pxa[i].EnableReliableRPC()
 		}
 
-		if err := waitn(pxa, seq, 5); err != nil {
+		if err := waitN(pxa, seq, 5); err != nil {
 			t.Fatal(err)
 		}
 
@@ -911,7 +920,7 @@ func TestGoPaxosManyRequestsChangingPartitions(t *testing.T) {
 			}
 		}
 		pxa[i] = Make(pxh, i)
-		pxa[i].unreliable = true
+		pxa[i].EnableUnReliableRPC()
 	}
 	defer makePartition(tag, npaxos, []int{}, []int{}, []int{})
 
@@ -994,7 +1003,7 @@ func TestGoPaxosManyRequestsChangingPartitions(t *testing.T) {
 
 	// repair, then check that all instances decided.
 	for i := 0; i < npaxos; i++ {
-		pxa[i].unreliable = false
+		pxa[i].EnableReliableRPC()
 	}
 	if err := makePartition(tag, npaxos, []int{0, 1, 2, 3, 4}, []int{}, []int{}); err != nil {
 		t.Fatal(err)
@@ -1002,12 +1011,38 @@ func TestGoPaxosManyRequestsChangingPartitions(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	for i := 0; i < seq; i++ {
-		if err := waitmajority(pxa, i); err != nil {
+		if err := waitMajority(pxa, i); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	fmt.Println("  ... Passed")
+}
+
+func TestGoPaxosConvergenceSpeed(t *testing.T) {
+	npaxos := 3
+	pxa := make([]*Paxos, npaxos)
+	pxh := make([]string, npaxos)
+	defer cleanup(pxa)
+
+	for i := 0; i < npaxos; i++ {
+		pxh[i] = port("convergence-speed", i)
+	}
+	for i := 0; i < npaxos; i++ {
+		pxa[i] = Make(pxh, i)
+	}
+
+	t0 := time.Now()
+
+	for i := 0; i < 20; i++ {
+		pxa[0].Start(i, "x")
+		if err := waitN(pxa, i, npaxos); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d := time.Since(t0)
+	fmt.Println("20 agreements %v seconds", d.Seconds())
 }
 
 func port(tag string, host int) string {
@@ -1028,6 +1063,8 @@ func port(tag string, host int) string {
 	return buf.String()
 }
 
+// ndecided returns #instances that have decided a value in given sequence number.
+// It will return an error if they decide on different values.
 func ndecided(pxa []*Paxos, seq int) (int, error) {
 	var states []struct {
 		decided bool
@@ -1036,7 +1073,6 @@ func ndecided(pxa []*Paxos, seq int) (int, error) {
 	if testing.Verbose() {
 		glog.Infof("Check states of instances, seq = %d", seq)
 	}
-
 	for i := 0; i < len(pxa); i++ {
 		decided, v := pxa[i].Status(seq)
 		states = append(states, struct {
@@ -1068,79 +1104,50 @@ func ndecided(pxa []*Paxos, seq int) (int, error) {
 	return count, nil
 }
 
-func waitn(pxa []*Paxos, seq int, wanted int) error {
+func waitInstances(pxa []*Paxos, seq int, validateCount func(int) bool) (int, error) {
+	defer func(start time.Time) {
+		glog.Infof("wait instances took %s", time.Since(start))
+	}(time.Now())
 	to := 10 * time.Millisecond
-	for iters := 0; iters < 30; iters++ {
-		count, err := ndecided(pxa, seq)
+	count := -1
+	var err error
+	for iters := 0; iters < 10; iters++ {
+		count, err = ndecided(pxa, seq)
 		if err != nil {
-			return err
+			return -1, err
 		}
-		if count >= wanted {
+		if validateCount(count) {
 			break
 		}
 		time.Sleep(to)
 		if to < time.Second {
-			// to *= 2
+			to *= 2
 		}
 	}
-	nd, err := ndecided(pxa, seq)
+	return count, nil
+}
+
+// waitN waits until it finds at least "expectedCount" instances have agreed on the same
+// value in given sequence number.
+func waitN(pxa []*Paxos, seq int, expectedCount int) error {
+	count, err := waitInstances(pxa, seq, func(count int) bool { return count >= expectedCount })
 	if err != nil {
 		return err
 	}
-	if nd < wanted {
-		return fmt.Errorf("too few decided; seq=%v ndecided=%v wanted=%v", seq, nd, wanted)
+	if count < expectedCount {
+		return fmt.Errorf("too few decided; seq=%d decided #instances=%d expect #instances=%d", seq, count, expectedCount)
 	}
 	return nil
 }
 
-func waitmajority(pxa []*Paxos, seq int) error {
-	return waitn(pxa, seq, (len(pxa)/2)+1)
-}
-
-func checkmax(pxa []*Paxos, seq int, max int) error {
-	time.Sleep(3 * time.Second)
-	nd, err := ndecided(pxa, seq)
-	if err != nil {
-		return err
-	}
-	if nd > max {
-		return fmt.Errorf("too many decided; seq=%v ndecided=%v max=%v", seq, nd, max)
-	}
-	return nil
+func waitMajority(pxa []*Paxos, seq int) error {
+	return waitN(pxa, seq, (len(pxa)/2)+1)
 }
 
 func cleanup(pxa []*Paxos) {
 	for i := 0; i < len(pxa); i++ {
-		if pxa[i] != nil {
-			pxa[i].Kill()
-		}
+		pxa[i].Kill()
 	}
-}
-
-func TestGoPaxosConvergenceSpeed(t *testing.T) {
-	npaxos := 3
-	pxa := make([]*Paxos, npaxos)
-	pxh := make([]string, npaxos)
-	defer cleanup(pxa)
-
-	for i := 0; i < npaxos; i++ {
-		pxh[i] = port("convergence-speed", i)
-	}
-	for i := 0; i < npaxos; i++ {
-		pxa[i] = Make(pxh, i)
-	}
-
-	t0 := time.Now()
-
-	for i := 0; i < 20; i++ {
-		pxa[0].Start(i, "x")
-		if err := waitn(pxa, i, npaxos); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	d := time.Since(t0)
-	fmt.Println("20 agreements %v seconds", d.Seconds())
 }
 
 func partitionedPort(tag string, src int, dest int) string {
