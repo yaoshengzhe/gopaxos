@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"runtime"
 	"strconv"
@@ -157,8 +158,8 @@ func TestGoPaxosDeafProposer(t *testing.T) {
 	if err := waitN(pxa, 0, npaxos); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(pxh[0])
-	os.Remove(pxh[npaxos-1])
+	// TODO os.Remove(pxh[0])
+	// TODO os.Remove(pxh[npaxos-1])
 	pxa[1].Start(1, "goodbye")
 	if err := waitMajority(pxa, 1); err != nil {
 		t.Fatal(err)
@@ -1046,21 +1047,25 @@ func TestGoPaxosConvergenceSpeed(t *testing.T) {
 }
 
 func port(tag string, host int) string {
-	var buf bytes.Buffer
-	buf.WriteString("/var/tmp/gopaxos-")
-	buf.WriteString(strconv.Itoa(os.Getuid()))
-	buf.WriteString("/")
+	/*
+		var buf bytes.Buffer
+		buf.WriteString("/var/tmp/gopaxos-")
+		buf.WriteString(strconv.Itoa(os.Getuid()))
+		buf.WriteString("/")
 
-	os.Mkdir(buf.String(), 0777)
+		os.Mkdir(buf.String(), 0777)
 
-	buf.WriteString("px-")
-	buf.WriteString(strconv.Itoa(os.Getpid()))
-	buf.WriteString("-")
-	buf.WriteString(tag)
-	buf.WriteString("-")
-	buf.WriteString(strconv.Itoa(host))
-
-	return buf.String()
+		buf.WriteString("px-")
+		buf.WriteString(strconv.Itoa(os.Getpid()))
+		buf.WriteString("-")
+		buf.WriteString(tag)
+		buf.WriteString("-")
+		buf.WriteString(strconv.Itoa(host))
+	*/
+	rpcPath := "paxos-" + strconv.Itoa(host) + "-" + tag
+	l, _ := net.Listen("tcp", ":0")
+	defer l.Close()
+	return l.Addr().String() + "/" + rpcPath
 }
 
 // ndecided returns #instances that have decided a value in given sequence number.
